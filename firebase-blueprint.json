@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "ConfigTeacher": {
+      "title": "ConfigTeacher",
+      "description": "Teacher configuration document for storing the password",
+      "type": "object",
+      "properties": {
+        "password": {
+          "type": "string",
+          "description": "The teacher access password"
+        }
+      },
+      "required": ["password"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "A scheduled presentation slot booked by students",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The timeslot identifier (e.g. 08:00)"
+        },
+        "slot": {
+          "type": "string",
+          "description": "The human-readable time interval"
+        },
+        "projectTitle": {
+          "type": "string",
+          "description": "The title of the presentation project"
+        },
+        "members": {
+          "type": "string",
+          "description": "The names of the project members"
+        },
+        "materials": {
+          "type": "array",
+          "description": "List of requested presentation materials"
+        },
+        "customMaterials": {
+          "type": "string",
+          "description": "Other requested custom materials"
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Creation timestamp in milliseconds"
+        }
+      },
+      "required": ["id", "slot", "projectTitle", "members", "materials", "createdAt"]
+    }
+  },
+  "firestore": {
+    "config/teacher": {
+      "schema": "ConfigTeacher",
+      "description": "Single teacher config document"
+    },
+    "bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Collection of presentation timeslot bookings"
+    }
+  }
+}

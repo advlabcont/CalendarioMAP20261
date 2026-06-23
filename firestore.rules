@@ -1,0 +1,72 @@
+rules_version = '2';
+// EduSchedule Firestore Security Rules
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common helper functions
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-:]+$');
+    }
+
+    // Config Collection Schema Validation
+    function isValidTeacherConfig(data) {
+      return data.keys().hasAll(['password']) 
+        && data.keys().size() == 1
+        && data.password is string 
+        && data.password.size() >= 1 
+        && data.password.size() <= 100;
+    }
+
+    // Bookings Collection Schema Validation
+    function isValidBooking(data) {
+      return data.keys().hasAll(['id', 'slot', 'projectTitle', 'members', 'materials', 'createdAt'])
+        && (data.keys().size() == 6 || (data.keys().size() == 7 && data.keys().hasAll(['customMaterials'])))
+        && data.id is string 
+        && data.id.size() <= 20
+        && data.slot is string 
+        && data.slot.size() <= 50
+        && data.projectTitle is string 
+        && data.projectTitle.size() <= 200
+        && data.members is string 
+        && data.members.size() <= 500
+        && data.materials is list 
+        && data.materials.size() <= 20
+        && (data.materials.size() == 0 || data.materials[0] is string)
+        && data.createdAt is number
+        && (!('customMaterials' in data) || (data.customMaterials is string && data.customMaterials.size() <= 500));
+    }
+
+    // Config Collection Rules
+    match /config/{docId} {
+      allow get: if isValidId(docId);
+      allow create, update: if isValidId(docId) && isValidTeacherConfig(incoming());
+      allow delete: if isValidId(docId);
+    }
+
+    // Bookings Collection Rules
+    match /bookings/{bookingId} {
+      allow get: if isValidId(bookingId);
+      allow list: if true;
+      allow create: if isValidId(bookingId) 
+        && isValidBooking(incoming()) 
+        && incoming().id == bookingId;
+      allow update: if isValidId(bookingId) 
+        && isValidBooking(incoming()) 
+        && incoming().id == bookingId;
+      allow delete: if isValidId(bookingId);
+    }
+  }
+}

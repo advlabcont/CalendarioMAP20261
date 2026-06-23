@@ -1,0 +1,34 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  
+  --color-brand-bg: #F0F9FF;
+  --color-brand-primary: #3B82F6;
+  --color-brand-primary-hover: #2563EB;
+  --color-brand-secondary: #6366F1;
+  --color-brand-secondary-hover: #4F46E5;
+  --color-brand-accent: #4ADE80;
+  --color-brand-warning: #FB923C;
+  --color-brand-dark: #1E293B;
+  
+  --shadow-flat: 8px 8px 0px rgba(30, 41, 59, 0.05);
+  --shadow-flat-hover: 12px 12px 0px rgba(30, 41, 59, 0.08);
+  --shadow-flat-pink: 8px 8px 0px rgba(99, 102, 241, 0.15);
+}
+
+.flat-card {
+  background-color: #FFFFFF;
+  border-radius: 24px;
+  border: 2px solid #E2E8F0;
+  box-shadow: var(--shadow-flat);
+  transition: all 0.2s ease;
+}
+
+.flat-card-hover:hover {
+  box-shadow: var(--shadow-flat-hover);
+  transform: translate(-2px, -2px);
+}
+
