@@ -35,13 +35,116 @@ export interface Booking {
   createdAt: number;
 }
 
+export interface Slot {
+  id: string; // e.g. "08:00"
+  time: string; // e.g. "08:00 - 08:20"
+}
+
 export interface TeacherConfig {
   passwordHash: string; // stored simple password
 }
 
 const BOOKINGS_COLLECTION = "bookings";
+const SLOTS_COLLECTION = "slots";
 const CONFIG_COLLECTION = "config";
 const CONFIG_TEACHER_DOC = "teacher";
+
+export const DEFAULT_SLOTS: Slot[] = [
+  { id: "08:00", time: "08:00 - 08:20" },
+  { id: "08:20", time: "08:20 - 08:40" },
+  { id: "08:40", time: "08:40 - 09:00" },
+  { id: "09:00", time: "09:00 - 09:20" },
+  { id: "09:20", time: "09:20 - 09:40" },
+  { id: "09:40", time: "09:40 - 10:00" },
+  { id: "10:00", time: "10:00 - 10:20" },
+  { id: "10:20", time: "10:20 - 10:40" },
+  { id: "10:40", time: "10:40 - 11:00" },
+];
+
+// Get all slots (with default seeding if empty)
+export async function getSlots(): Promise<Slot[]> {
+  try {
+    const colRef = collection(db, SLOTS_COLLECTION);
+    const querySnapshot = await getDocs(colRef);
+    const slotsList: Slot[] = [];
+    querySnapshot.forEach((doc) => {
+      slotsList.push({ id: doc.id, ...doc.data() } as Slot);
+    });
+
+    if (slotsList.length === 0) {
+      console.log("Seeding default slots to Firestore...");
+      for (const slot of DEFAULT_SLOTS) {
+        await setDoc(doc(db, SLOTS_COLLECTION, slot.id), slot);
+      }
+      localStorage.setItem("eduschedule_slots", JSON.stringify(DEFAULT_SLOTS));
+      return DEFAULT_SLOTS;
+    }
+
+    const sorted = slotsList.sort((a, b) => a.id.localeCompare(b.id));
+    localStorage.setItem("eduschedule_slots", JSON.stringify(sorted));
+    return sorted;
+  } catch (error) {
+    console.error("Erro ao carregar slots do Firestore, usando cache ou padrão:", error);
+    const local = localStorage.getItem("eduschedule_slots");
+    if (local) {
+      try {
+        return JSON.parse(local) as Slot[];
+      } catch (e) {
+        return DEFAULT_SLOTS;
+      }
+    }
+    return DEFAULT_SLOTS;
+  }
+}
+
+// Save a slot
+export async function saveSlot(slot: Slot): Promise<void> {
+  const local = localStorage.getItem("eduschedule_slots");
+  let slotsList: Slot[] = [];
+  if (local) {
+    try {
+      slotsList = JSON.parse(local) as Slot[];
+    } catch (e) {
+      slotsList = [];
+    }
+  }
+  slotsList = slotsList.filter((s) => s.id !== slot.id);
+  slotsList.push(slot);
+  slotsList.sort((a, b) => a.id.localeCompare(b.id));
+  localStorage.setItem("eduschedule_slots", JSON.stringify(slotsList));
+
+  try {
+    const docRef = doc(db, SLOTS_COLLECTION, slot.id);
+    await setDoc(docRef, slot);
+  } catch (error) {
+    console.error("Erro ao salvar slot no Firestore:", error);
+  }
+}
+
+// Delete a slot
+export async function deleteSlot(slotId: string): Promise<void> {
+  const local = localStorage.getItem("eduschedule_slots");
+  if (local) {
+    try {
+      let slotsList = JSON.parse(local) as Slot[];
+      slotsList = slotsList.filter((s) => s.id !== slotId);
+      localStorage.setItem("eduschedule_slots", JSON.stringify(slotsList));
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  try {
+    const docRef = doc(db, SLOTS_COLLECTION, slotId);
+    await deleteDoc(docRef);
+    
+    // Also delete any booking associated with this slot if it exists!
+    const bookingRef = doc(db, BOOKINGS_COLLECTION, slotId);
+    await deleteDoc(bookingRef);
+  } catch (error) {
+    console.error("Erro ao excluir slot no Firestore:", error);
+  }
+}
 
 // Initialize the default password in Firestore if not already present
 export async function initializeTeacherPassword() {

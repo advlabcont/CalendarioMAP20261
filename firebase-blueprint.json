@@ -47,6 +47,22 @@
         }
       },
       "required": ["id", "slot", "projectTitle", "members", "materials", "createdAt"]
+    },
+    "Slot": {
+      "title": "Slot",
+      "description": "An open timeslot for presentations",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The timeslot identifier (e.g. 08:00)"
+        },
+        "time": {
+          "type": "string",
+          "description": "The human-readable time interval"
+        }
+      },
+      "required": ["id", "time"]
     }
   },
   "firestore": {
@@ -57,6 +73,10 @@
     "bookings/{bookingId}": {
       "schema": "Booking",
       "description": "Collection of presentation timeslot bookings"
+    },
+    "slots/{slotId}": {
+      "schema": "Slot",
+      "description": "Collection of available timeslots"
     }
   }
 }

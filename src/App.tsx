@@ -18,30 +18,21 @@ import TeacherDashboard from "./components/TeacherDashboard";
 import BookingModal from "./components/BookingModal";
 import { 
   Booking, 
+  Slot,
   getBookings, 
+  getSlots,
   saveBooking, 
   initializeTeacherPassword,
   db
 } from "./firebase";
 import { collection, onSnapshot } from "firebase/firestore";
 
-const ALL_SLOTS = [
-  { id: "08:00", time: "08:00 - 08:20" },
-  { id: "08:20", time: "08:20 - 08:40" },
-  { id: "08:40", time: "08:40 - 09:00" },
-  { id: "09:00", time: "09:00 - 09:20" },
-  { id: "09:20", time: "09:20 - 09:40" },
-  { id: "09:40", time: "09:40 - 10:00" },
-  { id: "10:00", time: "10:00 - 10:20" },
-  { id: "10:20", time: "10:20 - 10:40" },
-  { id: "10:40", time: "10:40 - 11:00" },
-];
-
 type AppView = "cover" | "booking" | "teacher-dashboard";
 
 export default function App() {
   const [view, setView] = useState<AppView>("cover");
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [slots, setSlots] = useState<Slot[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState<{ id: string; time: string } | null>(null);
 
@@ -51,6 +42,8 @@ export default function App() {
     try {
       const data = await getBookings();
       setBookings(data);
+      const slotsData = await getSlots();
+      setSlots(slotsData);
     } catch (error) {
       console.error("Erro ao carregar agendamentos:", error);
     } finally {
@@ -62,7 +55,7 @@ export default function App() {
     initializeTeacherPassword();
     
     // Subscribe to Firestore bookings in real-time
-    const unsubscribe = onSnapshot(
+    const unsubscribeBookings = onSnapshot(
       collection(db, "bookings"),
       (snapshot) => {
         const bookingsList: Booking[] = [];
@@ -72,7 +65,6 @@ export default function App() {
         const sorted = bookingsList.sort((a, b) => a.id.localeCompare(b.id));
         setBookings(sorted);
         localStorage.setItem("eduschedule_bookings", JSON.stringify(sorted));
-        setLoading(false);
       },
       (error) => {
         console.error("Erro no onSnapshot do Firestore, usando fallback de busca única:", error);
@@ -80,8 +72,38 @@ export default function App() {
       }
     );
 
+    // Subscribe to Firestore slots in real-time
+    const unsubscribeSlots = onSnapshot(
+      collection(db, "slots"),
+      async (snapshot) => {
+        const slotsList: Slot[] = [];
+        snapshot.forEach((doc) => {
+          slotsList.push({ id: doc.id, ...doc.data() } as Slot);
+        });
+
+        if (slotsList.length === 0) {
+          const seeded = await getSlots();
+          setSlots(seeded);
+          setLoading(false);
+        } else {
+          const sorted = slotsList.sort((a, b) => a.id.localeCompare(b.id));
+          setSlots(sorted);
+          localStorage.setItem("eduschedule_slots", JSON.stringify(sorted));
+          setLoading(false);
+        }
+      },
+      (error) => {
+        console.error("Erro no onSnapshot de slots:", error);
+        getSlots().then((data) => {
+          setSlots(data);
+          setLoading(false);
+        });
+      }
+    );
+
     return () => {
-      unsubscribe();
+      unsubscribeBookings();
+      unsubscribeSlots();
     };
   }, []);
 
@@ -114,7 +136,7 @@ export default function App() {
     return (
       <TeacherDashboard 
         bookings={bookings} 
-        allSlots={ALL_SLOTS} 
+        allSlots={slots} 
         onLogout={() => setView("cover")} 
         onRefresh={fetchBookings} 
       />
@@ -201,7 +223,7 @@ export default function App() {
             </div>
           ) : (
             <div className="grid gap-3">
-              {ALL_SLOTS.map((slot) => {
+              {slots.map((slot) => {
                 // Check if this slot is already booked
                 const booking = bookings.find((b) => b.id === slot.id);
                 const isBooked = !!booking;
