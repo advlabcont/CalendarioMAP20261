@@ -18,13 +18,78 @@ import {
   XCircle,
   CalendarPlus
 } from "lucide-react";
-import { deleteBooking, saveBooking, Booking, saveSlot, deleteSlot, Slot } from "../firebase";
+import { deleteBooking, saveBooking, Booking, saveSlot, deleteSlot, Slot, saveBookingGrade } from "../firebase";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface TeacherDashboardProps {
   bookings: Booking[];
   allSlots: Slot[];
   onLogout: () => void;
   onRefresh: () => Promise<void>;
+}
+
+// Inline component for interactive real-time grade launching
+function GradeInput({ bookingId, initialGrade, onSave }: { bookingId: string; initialGrade: string; onSave: () => Promise<void> }) {
+  const [grade, setGrade] = useState(initialGrade);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  React.useEffect(() => {
+    setGrade(initialGrade);
+  }, [initialGrade]);
+
+  const handleSave = async () => {
+    const trimmed = grade.trim();
+    if (trimmed === initialGrade && !saved) return;
+    setIsSaving(true);
+    try {
+      await saveBookingGrade(bookingId, trimmed);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      await onSave();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 w-full max-w-[150px]">
+      <input
+        type="text"
+        placeholder="Lançar nota..."
+        value={grade}
+        onChange={(e) => {
+          setGrade(e.target.value);
+          setSaved(false);
+        }}
+        onBlur={handleSave}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            handleSave();
+          }
+        }}
+        disabled={isSaving}
+        className="w-full bg-slate-50 border-2 border-slate-200 focus:border-brand-primary px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 placeholder-slate-400 focus:outline-none transition-all disabled:opacity-50"
+      />
+      {isSaving ? (
+        <span className="text-[10px] text-slate-400 font-bold animate-pulse">...</span>
+      ) : saved ? (
+        <Check className="w-4 h-4 text-emerald-500 stroke-[3]" />
+      ) : grade !== initialGrade ? (
+        <button
+          onClick={handleSave}
+          type="button"
+          className="p-1 hover:bg-brand-primary/10 rounded text-brand-primary transition"
+          title="Salvar Nota"
+        >
+          <Check className="w-4 h-4" />
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 export default function TeacherDashboard({ bookings, allSlots, onLogout, onRefresh }: TeacherDashboardProps) {
@@ -35,6 +100,7 @@ export default function TeacherDashboard({ bookings, allSlots, onLogout, onRefre
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editMembers, setEditMembers] = useState("");
+  const [editGrade, setEditGrade] = useState("");
   const [editLoading, setEditLoading] = useState(false);
 
   // States for slot management
@@ -122,6 +188,7 @@ export default function TeacherDashboard({ bookings, allSlots, onLogout, onRefre
     setEditingBooking(booking);
     setEditTitle(booking.projectTitle);
     setEditMembers(booking.members);
+    setEditGrade(booking.grade || "");
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
@@ -136,7 +203,8 @@ export default function TeacherDashboard({ bookings, allSlots, onLogout, onRefre
         projectTitle: editTitle,
         members: editMembers,
         materials: editingBooking.materials || [],
-        customMaterials: ""
+        customMaterials: editingBooking.customMaterials || "",
+        grade: editGrade
       });
       setEditingBooking(null);
       await onRefresh();
@@ -148,13 +216,13 @@ export default function TeacherDashboard({ bookings, allSlots, onLogout, onRefre
   };
 
   const exportToCSV = () => {
-    const headers = "Horário;Título do Projeto;Integrantes;Status\n";
+    const headers = "Horário;Título do Projeto;Integrantes;Nota;Status\n";
     const rows = allSlots.map(slot => {
       const b = bookings.find(book => book.id === slot.id);
       if (b) {
-        return `"${slot.time}";"${b.projectTitle.replace(/"/g, '""')}";"${b.members.replace(/"/g, '""')}";"Reservado"`;
+        return `"${slot.time}";"${b.projectTitle.replace(/"/g, '""')}";"${b.members.replace(/"/g, '""')}";"${(b.grade || "").replace(/"/g, '""')}";"Reservado"`;
       }
-      return `"${slot.time}";"DISPONÍVEL";"";"Vago"`;
+      return `"${slot.time}";"DISPONÍVEL";"";"";"Vago"`;
     }).join("\n");
 
     const blob = new Blob(["\uFEFF" + headers + rows], { type: "text/csv;charset=utf-8;" });
@@ -168,6 +236,79 @@ export default function TeacherDashboard({ bookings, allSlots, onLogout, onRefre
 
   const printReport = () => {
     window.print();
+  };
+
+  const downloadPDF = () => {
+    try {
+      const doc = new jsPDF();
+      
+      // Page title
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(18);
+      doc.setTextColor(30, 41, 59); // slate-800
+      doc.text("EduSchedule - Relatorio de Apresentacoes", 14, 20);
+      
+      // Subtitle / Date
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(100, 116, 139); // slate-500
+      doc.text("Data Unica: Sabado, 27 de Junho de 2026", 14, 26);
+      doc.text(`Gerado em: ${new Date().toLocaleString("pt-BR")}`, 14, 31);
+      
+      // Draw a line
+      doc.setDrawColor(226, 232, 240); // slate-200
+      doc.line(14, 35, 196, 35);
+      
+      // Stats
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(51, 65, 85); // slate-700
+      doc.text("Resumo de Ocupacao", 14, 43);
+      
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Total de Horarios: ${totalSlotsCount}`, 14, 49);
+      doc.text(`Horarios Reservados: ${bookedCount} (${fillingPercentage}%)`, 80, 49);
+      doc.text(`Horarios Disponiveis: ${availableCount}`, 150, 49);
+      
+      // Table data
+      const tableColumn = ["Horario", "Titulo do Projeto", "Integrantes do Grupo", "Nota", "Status"];
+      const tableRows = allSlots.map(slot => {
+        const b = bookings.find(book => book.id === slot.id);
+        return [
+          slot.time,
+          b ? b.projectTitle : "--- DISPONIVEL ---",
+          b ? b.members : "Nenhum agendamento",
+          b ? (b.grade || "Sem Nota") : "-",
+          b ? "Reservado" : "Vago"
+        ];
+      });
+      
+      // Generate table
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 55,
+        theme: "striped",
+        headStyles: { fillColor: [59, 130, 246] }, // brand-primary blue
+        styles: { fontSize: 9, cellPadding: 3, font: "helvetica" },
+        columnStyles: {
+          0: { cellWidth: 30 }, // Horário
+          1: { cellWidth: 55 }, // Título
+          2: { cellWidth: 60 }, // Integrantes
+          3: { cellWidth: 20 }, // Nota
+          4: { cellWidth: 20 }  // Status
+        }
+      });
+      
+      // Save PDF
+      doc.save("Relatorio_Apresentacoes_27_06.pdf");
+    } catch (error) {
+      console.error("Erro ao gerar PDF:", error);
+      alert("Erro ao gerar PDF para download. Exportando CSV como alternativa.");
+      exportToCSV();
+    }
   };
 
   return (
@@ -192,9 +333,10 @@ export default function TeacherDashboard({ bookings, allSlots, onLogout, onRefre
         <table className="w-full text-left border-collapse text-xs mt-4">
           <thead>
             <tr className="bg-slate-100 border-b border-slate-300">
-              <th className="p-2.5 font-bold text-slate-700 w-[20%]">Horário</th>
-              <th className="p-2.5 font-bold text-slate-700 w-[40%]">Título do Projeto</th>
-              <th className="p-2.5 font-bold text-slate-700 w-[40%]">Integrantes do Grupo</th>
+              <th className="p-2.5 font-bold text-slate-700 w-[15%]">Horário</th>
+              <th className="p-2.5 font-bold text-slate-700 w-[35%]">Título do Projeto</th>
+              <th className="p-2.5 font-bold text-slate-700 w-[35%]">Integrantes do Grupo</th>
+              <th className="p-2.5 font-bold text-slate-700 w-[15%]">Nota</th>
             </tr>
           </thead>
           <tbody>
@@ -205,6 +347,7 @@ export default function TeacherDashboard({ bookings, allSlots, onLogout, onRefre
                   <td className="p-2.5 font-mono font-semibold">{slot.time}</td>
                   <td className="p-2.5 font-medium">{b ? b.projectTitle : "--- DISPONÍVEL ---"}</td>
                   <td className="p-2.5 text-slate-600 leading-relaxed">{b ? b.members : "Nenhum agendamento"}</td>
+                  <td className="p-2.5 font-bold text-slate-800">{b ? (b.grade || "Sem Nota") : "-"}</td>
                 </tr>
               );
             })}
@@ -317,6 +460,17 @@ export default function TeacherDashboard({ bookings, allSlots, onLogout, onRefre
                   />
                 </div>
 
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Nota do Grupo</label>
+                  <input
+                    type="text"
+                    value={editGrade}
+                    onChange={(e) => setEditGrade(e.target.value)}
+                    placeholder="Lançar nota (ex: 9,5)"
+                    className="w-full bg-slate-50 border-2 border-slate-200 focus:border-brand-primary px-3.5 py-2.5 rounded-xl text-sm font-medium focus:outline-none"
+                  />
+                </div>
+
                 <div className="flex gap-2.5 pt-2">
                   <button
                     type="button"
@@ -409,11 +563,11 @@ export default function TeacherDashboard({ bookings, allSlots, onLogout, onRefre
 
                   <div className="space-y-3">
                     <button
-                      onClick={printReport}
+                      onClick={downloadPDF}
                       className="w-full flex items-center justify-center gap-2 bg-brand-primary hover:bg-brand-primary-hover text-white font-bold py-3 rounded-xl transition text-xs shadow-[4px_4px_0px_rgba(59,130,246,0.15)]"
                     >
-                      <Printer className="w-4 h-4" />
-                      Visualizar para Imprimir (PDF)
+                      <Download className="w-4 h-4" />
+                      Baixar Relatório (PDF)
                     </button>
                     
                     <button
@@ -451,11 +605,16 @@ export default function TeacherDashboard({ bookings, allSlots, onLogout, onRefre
                           return (
                             <div key={slot.id} className="p-4 bg-slate-50 border-2 border-slate-100 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition hover:border-slate-200">
                               <div className="space-y-1">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   <span className="font-mono text-xs font-bold text-brand-primary bg-blue-50 border border-brand-primary/20 px-2 py-0.5 rounded">
                                     {slot.time}
                                   </span>
                                   <h4 className="font-bold text-slate-800 text-sm">{b.projectTitle}</h4>
+                                  {b.grade && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-bold rounded-md">
+                                      Nota: {b.grade}
+                                    </span>
+                                  )}
                                 </div>
                                 <p className="text-xs text-slate-500 font-medium pl-1">
                                   <strong className="text-slate-600">Alunos:</strong> {b.members}
@@ -491,11 +650,11 @@ export default function TeacherDashboard({ bookings, allSlots, onLogout, onRefre
                   <p className="text-xs text-slate-400 font-medium">Controle e edição direta dos horários agendados.</p>
                 </div>
                 <button
-                  onClick={printReport}
+                  onClick={downloadPDF}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 border-2 border-slate-200 text-slate-600 hover:text-slate-800 rounded-xl text-xs font-bold bg-slate-50 hover:bg-slate-100 transition"
                 >
-                  <Printer className="w-4 h-4 text-slate-500" />
-                  Imprimir Cronograma
+                  <Download className="w-4 h-4 text-slate-500" />
+                  Baixar Cronograma (PDF)
                 </button>
               </div>
 
@@ -503,9 +662,10 @@ export default function TeacherDashboard({ bookings, allSlots, onLogout, onRefre
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50/75 border-b border-slate-100 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                      <th className="py-4 px-6 w-[20%]">Horário</th>
-                      <th className="py-4 px-6 w-[35%]">Título do Projeto</th>
-                      <th className="py-4 px-6 w-[35%]">Integrantes do Grupo</th>
+                      <th className="py-4 px-6 w-[15%]">Horário</th>
+                      <th className="py-4 px-6 w-[30%]">Título do Projeto</th>
+                      <th className="py-4 px-6 w-[25%]">Integrantes do Grupo</th>
+                      <th className="py-4 px-6 w-[20%]">Nota / Avaliação</th>
                       <th className="py-4 px-6 w-[10%] text-center">Ações</th>
                     </tr>
                   </thead>
@@ -527,6 +687,17 @@ export default function TeacherDashboard({ bookings, allSlots, onLogout, onRefre
                           <td className="py-4 px-6 text-slate-600">
                             {b ? (
                               <p className="line-clamp-2 leading-relaxed text-xs font-medium">{b.members}</p>
+                            ) : (
+                              <span className="text-slate-300 font-light">-</span>
+                            )}
+                          </td>
+                          <td className="py-4 px-6">
+                            {b ? (
+                              <GradeInput
+                                bookingId={b.id}
+                                initialGrade={b.grade || ""}
+                                onSave={onRefresh}
+                              />
                             ) : (
                               <span className="text-slate-300 font-light">-</span>
                             )}

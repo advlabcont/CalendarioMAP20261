@@ -32,6 +32,7 @@ export interface Booking {
   members: string;
   materials: string[];
   customMaterials: string;
+  grade?: string; // Optional grade for the presentation
   createdAt: number;
 }
 
@@ -274,5 +275,27 @@ export async function deleteBooking(slotId: string): Promise<void> {
     await deleteDoc(docRef);
   } catch (error) {
     console.error("Erro ao deletar agendamento no Firestore (removido localmente):", error);
+  }
+}
+
+// Save or update only the grade of a booking
+export async function saveBookingGrade(bookingId: string, grade: string): Promise<void> {
+  // Update local storage
+  const local = localStorage.getItem("eduschedule_bookings");
+  if (local) {
+    try {
+      let bookings = JSON.parse(local) as Booking[];
+      bookings = bookings.map((b) => b.id === bookingId ? { ...b, grade } : b);
+      localStorage.setItem("eduschedule_bookings", JSON.stringify(bookings));
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  try {
+    const docRef = doc(db, BOOKINGS_COLLECTION, bookingId);
+    await setDoc(docRef, { grade }, { merge: true });
+  } catch (error) {
+    console.error("Erro ao salvar nota no Firestore:", error);
   }
 }

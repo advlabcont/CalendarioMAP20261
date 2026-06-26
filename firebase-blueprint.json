@@ -41,6 +41,10 @@
           "type": "string",
           "description": "Other requested custom materials"
         },
+        "grade": {
+          "type": "string",
+          "description": "Grade or grade notes awarded by the teacher"
+        },
         "createdAt": {
           "type": "number",
           "description": "Creation timestamp in milliseconds"

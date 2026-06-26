@@ -33,7 +33,6 @@ service cloud.firestore {
     // Bookings Collection Schema Validation
     function isValidBooking(data) {
       return data.keys().hasAll(['id', 'slot', 'projectTitle', 'members', 'materials', 'createdAt'])
-        && (data.keys().size() == 6 || (data.keys().size() == 7 && data.keys().hasAll(['customMaterials'])))
         && data.id is string 
         && data.id.size() <= 20
         && data.slot is string 
@@ -46,7 +45,19 @@ service cloud.firestore {
         && data.materials.size() <= 20
         && (data.materials.size() == 0 || data.materials[0] is string)
         && data.createdAt is number
-        && (!('customMaterials' in data) || (data.customMaterials is string && data.customMaterials.size() <= 500));
+        && (!('customMaterials' in data) || (data.customMaterials is string && data.customMaterials.size() <= 500))
+        && (!('grade' in data) || (data.grade is string && data.grade.size() <= 100));
+    }
+
+    function isValidBookingUpdate(data) {
+      return (!('id' in data) || (data.id is string && data.id.size() <= 20))
+        && (!('slot' in data) || (data.slot is string && data.slot.size() <= 50))
+        && (!('projectTitle' in data) || (data.projectTitle is string && data.projectTitle.size() <= 200))
+        && (!('members' in data) || (data.members is string && data.members.size() <= 500))
+        && (!('materials' in data) || (data.materials is list && data.materials.size() <= 20))
+        && (!('createdAt' in data) || (data.createdAt is number))
+        && (!('customMaterials' in data) || (data.customMaterials is string && data.customMaterials.size() <= 500))
+        && (!('grade' in data) || (data.grade is string && data.grade.size() <= 100));
     }
 
     // Slots Collection Schema Validation
@@ -74,8 +85,8 @@ service cloud.firestore {
         && isValidBooking(incoming()) 
         && incoming().id == bookingId;
       allow update: if isValidId(bookingId) 
-        && isValidBooking(incoming()) 
-        && incoming().id == bookingId;
+        && isValidBookingUpdate(incoming()) 
+        && (!('id' in incoming()) || incoming().id == bookingId);
       allow delete: if isValidId(bookingId);
     }
 
